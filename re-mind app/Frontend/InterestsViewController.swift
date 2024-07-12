@@ -1,0 +1,168 @@
+import UIKit
+
+class InterestsViewController: UIViewController {
+    @IBOutlet weak var fitnessImageView: UIImageView!
+    @IBOutlet weak var productivityImageView: UIImageView!
+    @IBOutlet weak var businessImageView: UIImageView!
+    @IBOutlet weak var stoicismImageView: UIImageView!
+    @IBOutlet weak var spiritualityImageView: UIImageView!
+    @IBOutlet weak var wellbeingImageView: UIImageView!
+    @IBOutlet weak var scienceImageView: UIImageView!
+    @IBOutlet weak var disciplineImageView: UIImageView!
+    @IBOutlet weak var moneyImageView: UIImageView!
+    @IBOutlet weak var saveImageView: UIImageView!
+
+    var selectedInterests: Set<String> = []
+    var initialSelectedInterests: Set<String> = []
+    var isFirstLaunch: Bool {
+        return !UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        let imageViews = [
+            "Fitness": fitnessImageView,
+            "Productivity": productivityImageView,
+            "Business": businessImageView,
+            "Stoicism": stoicismImageView,
+            "Spirituality": spiritualityImageView,
+            "Wellbeing": wellbeingImageView,
+            "Science": scienceImageView,
+            "Discipline": disciplineImageView,
+            "Money": moneyImageView
+        ]
+
+        for (interest, imageView) in imageViews {
+            imageView?.image = UIImage(named: "\(interest.lowercased()) default") // Set default image
+            let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(imageTapped(_:)))
+            imageView?.isUserInteractionEnabled = true
+            imageView?.addGestureRecognizer(tapGestureRecognizer)
+            imageView?.tag = interest.hashValue // Use hash value as a unique identifier
+        }
+
+        // Load saved selections
+        if let savedSelections = UserDefaults.standard.object(forKey: "selectedInterests") as? [String] {
+            selectedInterests = Set(savedSelections)
+            initialSelectedInterests = selectedInterests
+            for interest in selectedInterests {
+                if let imageView = imageViews[interest] {
+                    imageView?.image = UIImage(named: "\(interest.lowercased()) selected")
+                }
+            }
+            // Set save button to saved state if there are saved selections
+            saveImageView.image = UIImage(named: "saved")
+            saveImageView.isUserInteractionEnabled = false // Disable initially if there are no changes
+        } else {
+            // Set save button to unsaved state if there are no saved selections
+            saveImageView.image = UIImage(named: "unsaved")
+            saveImageView.isUserInteractionEnabled = false // Disable initially if there are no changes
+        }
+
+        // Set up tap gesture for the save button image view
+        let saveTapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(saveButtonTapped(_:)))
+        saveImageView.isUserInteractionEnabled = true
+        saveImageView.addGestureRecognizer(saveTapGestureRecognizer)
+    }
+
+    @objc func imageTapped(_ sender: UITapGestureRecognizer) {
+        guard let tappedImageView = sender.view as? UIImageView else { return }
+        let interest = interestForImageView(tappedImageView)
+
+        if selectedInterests.contains(interest) {
+            // Deselect
+            selectedInterests.remove(interest)
+            tappedImageView.image = UIImage(named: "\(interest.lowercased()) default")
+        } else {
+            // Select
+            selectedInterests.insert(interest)
+            tappedImageView.image = UIImage(named: "\(interest.lowercased()) selected")
+        }
+
+        // Check if there are any changes in the selections
+        let hasChanges = selectedInterests != initialSelectedInterests
+        saveImageView.isUserInteractionEnabled = hasChanges
+        saveImageView.image = UIImage(named: hasChanges ? "unsaved" : "saved")
+    }
+
+    func interestForImageView(_ imageView: UIImageView) -> String {
+        switch imageView.tag {
+        case "Fitness".hashValue:
+            return "Fitness"
+        case "Productivity".hashValue:
+            return "Productivity"
+        case "Business".hashValue:
+            return "Business"
+        case "Stoicism".hashValue:
+            return "Stoicism"
+        case "Spirituality".hashValue:
+            return "Spirituality"
+        case "Wellbeing".hashValue:
+            return "Wellbeing"
+        case "Science".hashValue:
+            return "Science"
+        case "Discipline".hashValue:
+            return "Discipline"
+        case "Money".hashValue:
+            return "Money"
+        default:
+            return ""
+        }
+    }
+
+    @objc func saveButtonTapped(_ sender: UITapGestureRecognizer) {
+        let shouldActivateNotifications = isFirstLaunch || selectedInterests != initialSelectedInterests
+        if shouldActivateNotifications {
+            saveSelectedInterests()
+            saveImageView.image = UIImage(named: "saved") // Change to saved state
+            saveImageView.isUserInteractionEnabled = false // Disable the save button
+
+            // Enable reminders and schedule notifications
+            UserDefaults.standard.set(true, forKey: "remindersSwitchState")
+            UserDefaults.standard.set("Hourly", forKey: "frequency") // Set default frequency to Hourly
+            let interval = getInterval(for: "Hourly")
+            NotificationScheduler().scheduleNotifications(interval: interval)
+            
+            // Set the first launch flag to false
+            UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+            
+            // Show notification alert
+            showAlert(title: "Reminders Activated", message: "You can always change how often you recieve reminders on the notification settings page.")
+        }
+    }
+
+    func saveSelectedInterests() {
+        let selectedInterestsArray = Array(selectedInterests)
+        UserDefaults.standard.set(selectedInterestsArray, forKey: "selectedInterests")
+        print("Saved selected interests: \(selectedInterestsArray)")
+        
+        // Reload quotes pool based on selected interests
+        QuotesManager.shared.resetSelectedQuotesPool()
+        for interest in selectedInterests {
+            QuotesManager.shared.addQuotes(for: interest)
+        }
+
+        // Update initial selections
+        initialSelectedInterests = selectedInterests
+    }
+
+    private func getInterval(for frequency: String) -> TimeInterval {
+        switch frequency {
+        case "Hourly":
+            return 60 * 60 // Hourly in seconds
+        case "Daily":
+            return 86400 // Daily in seconds
+        case "Random":
+            return TimeInterval.random(in: 3600...86400) // Random between 1 hour and 24 hours
+        default:
+            return 60 * 60 // Default to Hourly
+        }
+    }
+    
+    private func showAlert(title: String, message: String) {
+        let alertController = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        let okAction = UIAlertAction(title: "OK", style: .default, handler: nil)
+        alertController.addAction(okAction)
+        present(alertController, animated: true, completion: nil)
+    }
+}
